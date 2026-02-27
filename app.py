@@ -13,17 +13,14 @@ def get_base64_image(image_path):
             return base64.b64encode(img_file.read()).decode()
     return None
 
-# --- CSS CUSTOM: LOTTE STYLE ---
+# --- CSS CUSTOM ---
 logo_b64 = get_base64_image("lotte_logo.png")
 st.markdown(f"""
     <style>
         .custom-header {{
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 90px;
-            background-color: white;
-            display: flex; align-items: center;
-            padding: 0 30px; border-bottom: 3px solid #eeeeee;
-            z-index: 999999;
+            position: fixed; top: 0; left: 0; width: 100%; height: 90px;
+            background-color: white; display: flex; align-items: center;
+            padding: 0 30px; border-bottom: 3px solid #eeeeee; z-index: 999999;
         }}
         .header-logo {{ height: 55px; margin-right: 25px; }}
         .header-title {{
@@ -31,16 +28,13 @@ st.markdown(f"""
             font-family: 'Arial Black', sans-serif; color: #333333; margin: 0;
         }}
         [data-testid="stSidebar"] {{
-            background-color: #FF0000 !important;
-            margin-top: 90px !important;
+            background-color: #FF0000 !important; margin-top: 90px !important;
             min-width: 320px !important;
         }}
         [data-testid="stSidebar"] .stMarkdown p, 
         [data-testid="stSidebar"] label {{
             color: white !important; font-weight: bold !important;
-            font-size: 1.1rem !important;
         }}
-        div[data-testid="stSelectbox"] > label {{ color: white !important; }}
         .main .block-container {{ padding-top: 130px !important; }}
         header {{ visibility: hidden; }}
     </style>
@@ -73,13 +67,16 @@ def load_and_clean_data(uploaded_file):
     rows = []
     for i in range(len(df_raw)):
         current_row = df_raw.iloc[i].values.tolist()
+        # Cek jika kolom pertama adalah angka (Store Code)
         if pd.notnull(current_row[0]) and str(current_row[0]).strip().isdigit():
             rows.append(current_row)
-        elif pd.isnull(current_row[0]) and pd.notnull(current_row[4]):
+        # Handle wrap text pada nama Item (kolom index 4)
+        elif pd.isnull(current_row[0]) and len(current_row) > 4 and pd.notnull(current_row[4]):
             if rows:
                 rows[-1][4] = f"{rows[-1][4]} {current_row[4]}".strip()
     
     df = pd.DataFrame(rows)
+    # Ambil kolom yang diperlukan (Sesuai urutan file report Anda)
     df = df[[0, 2, 4, 5, 6, 9, 10, 13, 14]]
     df.columns = ['Str_cd', 'Group', 'Item', 'D_TY', 'D_LY', 'M_TY', 'M_LY', 'Y_TY', 'Y_LY']
     
@@ -87,44 +84,25 @@ def load_and_clean_data(uploaded_file):
     df['Group'] = df['Group'].astype(str).str.strip().str.upper()
     df['Item'] = df['Item'].astype(str).str.replace(r'\s+', ' ', regex=True).str.strip()
     
-    for col in df.columns[3:]:
+    for col in ['D_TY', 'D_LY', 'M_TY', 'M_LY', 'Y_TY', 'Y_LY']:
         df[col] = df[col].astype(str).str.replace(',', '').str.replace(' ', '')
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     return df
 
-# --- FUNGSI DOWNLOAD EXCEL DENGAN MERGE HEADER ---
 def to_excel_with_style(df):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        # Tulis data mulai baris 3 tanpa header otomatis
         df.to_excel(writer, sheet_name='Sales Report', header=False, startrow=2)
-        
         workbook  = writer.book
         worksheet = writer.sheets['Sales Report']
         
-        # --- FORMATTING ---
-        header_fmt = workbook.add_format({
-            'bold': True, 'align': 'center', 'valign': 'vcenter',
-            'fg_color': '#D3D3D3', 'border': 1
-        })
-        num_fmt = workbook.add_format({
-            'num_format': '#,##0;[Red]▼#,##0;0', 
-            'border': 1, 'align': 'right'
-        })
-        pct_fmt = workbook.add_format({
-            'num_format': '0.0%;[Red]▼0.0%;0%', 
-            'border': 1, 'align': 'right'
-        })
-        bold_border_fmt = workbook.add_format({'border': 1, 'bold': True, 'align': 'center'})
+        header_fmt = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'fg_color': '#D3D3D3', 'border': 1})
+        num_fmt = workbook.add_format({'num_format': '#,##0;[Red]▼#,##0;0', 'border': 1, 'align': 'right'})
+        pct_fmt = workbook.add_format({'num_format': '0.0%;[Red]▼0.0%;0%', 'border': 1, 'align': 'right'})
 
-        # --- LOGIKA MERGE HEADER ---
-        # 1. Merge baris Store Code & Store Name (A1:A2 dan B1:B2)
         worksheet.merge_range('A1:A2', 'Store Code', header_fmt)
         worksheet.merge_range('B1:B2', 'Store Name', header_fmt)
-        worksheet.set_column(0, 0, 12, bold_border_fmt)
-        worksheet.set_column(1, 1, 18, bold_border_fmt)
-
-        # 2. Menghitung posisi kolom untuk Merge Category
+        
         current_col = 2
         categories = []
         for cat in df.columns.get_level_values(0):
@@ -133,7 +111,6 @@ def to_excel_with_style(df):
         
         for cat in categories:
             sub_cols_count = list(df.columns.get_level_values(0)).count(cat)
-            
             if sub_cols_count > 1:
                 worksheet.merge_range(0, current_col, 0, current_col + sub_cols_count - 1, cat, header_fmt)
             else:
@@ -143,14 +120,9 @@ def to_excel_with_style(df):
             for i, met in enumerate(metrics):
                 col_idx = current_col + i
                 worksheet.write(1, col_idx, met, header_fmt)
-                
-                if "YEAR" in met:
-                    worksheet.set_column(col_idx, col_idx, 15, num_fmt)
-                else:
-                    worksheet.set_column(col_idx, col_idx, 12, pct_fmt)
-            
+                if "YEAR" in met: worksheet.set_column(col_idx, col_idx, 15, num_fmt)
+                else: worksheet.set_column(col_idx, col_idx, 12, pct_fmt)
             current_col += sub_cols_count
-                
     return output.getvalue()
 
 # ================= UI & FILTER =================
@@ -163,22 +135,19 @@ if uploaded_file:
     with st.sidebar:
         st.markdown("---")
         all_items = sorted(df['Item'].unique())
-        def_idx = 0
-        for i, v in enumerate(all_items):
-            if "NET SALE" in v.upper():
-                def_idx = i
-                break
-        
         all_stores = sorted(df['Str_cd'].unique(), key=int)
+        
         selected_stores = st.multiselect("SELECT STORES", all_stores, default=all_stores)
         selected_groups = st.multiselect("SELECT MAPPING GROUP", ['SMALL', 'MEDIUM', 'BIG'], default=['SMALL', 'MEDIUM', 'BIG'])
-        selected_item = st.selectbox("SELECT ITEM", all_items, index=def_idx)
+        selected_item = st.selectbox("SELECT ITEM", all_items, index=0)
         period = st.selectbox("SELECT PERIOD", ["Daily", "MTD", "YTD"])
         st.markdown("---")
 
-    suffix = 'D' if period == "Daily" else period
-    final_rows = []
+    # Mapping Period ke Suffix Kolom
+    p_map = {"Daily": "D", "MTD": "M", "YTD": "Y"}
+    suffix = p_map[period]
     
+    final_rows = []
     for store in selected_stores:
         df_match = df[(df['Str_cd'] == store) & (df['Item'] == selected_item)]
         if df_match.empty: continue
@@ -189,19 +158,23 @@ if uploaded_file:
         }
         
         df_total = df_match[df_match['Group'].isin(['SMALL','MEDIUM','BIG'])]
-        t_ty = df_total[f'{suffix}_TY'].sum()
-        t_ly = df_total[f'{suffix}_LY'].sum()
+        # Menggunakan .get() atau pengecekan kolom untuk menghindari KeyError
+        col_ty = f'{suffix}_TY'
+        col_ly = f'{suffix}_LY'
+        
+        t_ty = df_total[col_ty].sum() if col_ty in df_total.columns else 0
+        t_ly = df_total[col_ly].sum() if col_ly in df_total.columns else 0
         
         res[('TOTAL SALES', 'THIS YEAR')] = t_ty
         res[('TOTAL SALES', 'LAST YEAR')] = t_ly
         res[('TOTAL SALES', 'GROWTH (%)')] = ((t_ty - t_ly)/t_ly*100) if t_ly != 0 else 0
         
         for g in ['SMALL', 'MEDIUM', 'BIG']:
-            df_g = df_match[df_match['Group'] == g]
-            g_ty = df_g[f'{suffix}_TY'].sum()
-            g_ly = df_g[f'{suffix}_LY'].sum()
-            
             if g in selected_groups:
+                df_g = df_match[df_match['Group'] == g]
+                g_ty = df_g[col_ty].sum() if col_ty in df_g.columns else 0
+                g_ly = df_g[col_ly].sum() if col_ly in df_g.columns else 0
+                
                 res[(g, 'THIS YEAR')] = g_ty
                 res[(g, 'LAST YEAR')] = g_ly
                 res[(g, 'GROWTH (%)')] = ((g_ty - g_ly)/g_ly*100) if g_ly != 0 else 0
@@ -214,42 +187,29 @@ if uploaded_file:
         res_df['Store Code'] = pd.to_numeric(res_df['Store Code'])
         res_df = res_df.sort_values('Store Code').set_index('Store Code')
         
-        # Penyesuaian MultiIndex untuk mengakomodasi Store Name sebagai kolom biasa di awal
-        new_cols = []
-        for col in res_df.columns:
-            if isinstance(col, tuple):
-                new_cols.append(col)
-            else:
-                new_cols.append((col, ""))
-        res_df.columns = pd.MultiIndex.from_tuples(new_cols)
+        # Rapikan MultiIndex Columns
+        res_df.columns = pd.MultiIndex.from_tuples([
+            (c if isinstance(c, tuple) else c, "" if not isinstance(c, tuple) else c[1]) 
+            for c in res_df.columns
+        ])
         
         st.markdown(f"### 📋 {selected_item} Report ({period})")
+        format_dict = {col: ("{:,.0f}" if "YEAR" in col[1] else "{:.1f}%") for col in res_df.columns if col[1] != ""}
         
-        format_dict = {}
-        for col in res_df.columns:
-            if "YEAR" in col[1]: format_dict[col] = "{:,.0f}"
-            elif "%" in col[1]: format_dict[col] = "{:.1f}%"
-            
         st.dataframe(
             res_df.style.format(format_dict).applymap(
                 lambda x: 'color: red' if isinstance(x, (int, float)) and x < 0 else None
-            ),
-            use_container_width=True,
-            height=500
+            ), use_container_width=True, height=500
         )
         
         df_export = res_df.copy()
         for col in df_export.columns:
-            if "%" in col[1]:
-                df_export[col] = df_export[col] / 100
+            if "%" in col[1]: df_export[col] = df_export[col] / 100
         
         excel_bin = to_excel_with_style(df_export)
         st.download_button(
-            label="📥 DOWNLOAD EXCEL",
-            data=excel_bin,
-            file_name=f"{selected_item}_{period}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
+            label="📥 DOWNLOAD EXCEL", data=excel_bin,
+            file_name=f"{selected_item}_{period}.xlsx", use_container_width=True
         )
     else:
         st.info("No data found for selected filters.")
