@@ -50,6 +50,22 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
+# ================= MAPPING NAMA STORE =================
+STORE_MAP = {
+    "6001": "6001 Pasar Rebo", "6003": "6003 Kelapa Gading", "6006": "6006 Ciputat",
+    "6007": "6007 Alam Sutera", "6010": "6010 Medan", "6014": "6014 Palembang",
+    "6015": "6015 Pekanbaru", "6021": "6021 Jatake", "6022": "6022 Serang",
+    "6029": "6029 Batam", "6031": "6031 Lampung", "6039": "6039 Serpong",
+    "6004": "6004 Meruya", "6005": "6005 Bandung", "6008": "6008 Cibitung",
+    "6018": "6018 Bekasi", "6023": "6023 Cikarang", "6024": "6024 Cirebon",
+    "6026": "6026 Bogor", "6027": "6027 Tasikmalaya", "6030": "6030 Pakansari",
+    "6034": "6034 Kerawang", "6036": "6036 Cimahi", "6038": "6038 Tegal",
+    "6002": "6002 Sidoarjo", "6009": "6009 Denpasar", "6011": "6011 Semarang",
+    "6013": "6013 Makasar", "6016": "6016 Yogyakarta", "6017": "6017 Banjarmasin",
+    "6019": "6019 Solo", "6020": "6020 Balikpapan", "6028": "6028 Mastrip",
+    "6032": "6032 Samarinda", "6033": "6033 Manado", "6037": "6037 Mataram"
+}
+
 # ================= LOGIKA DATA =================
 
 def load_and_clean_data(uploaded_file):
@@ -68,6 +84,9 @@ def load_and_clean_data(uploaded_file):
     df.columns = ['Str_cd', 'Group', 'Item', 'D_TY', 'D_LY', 'M_TY', 'M_LY', 'Y_TY', 'Y_LY']
     
     df['Str_cd'] = df['Str_cd'].astype(int).astype(str)
+    # Ganti ID Store dengan Nama dari Mapping
+    df['Str_cd'] = df['Str_cd'].map(lambda x: STORE_MAP.get(x, x))
+    
     df['Group'] = df['Group'].astype(str).str.strip().str.upper()
     df['Item'] = df['Item'].astype(str).str.replace(r'\s+', ' ', regex=True).str.strip()
     
@@ -76,65 +95,38 @@ def load_and_clean_data(uploaded_file):
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     return df
 
-# --- FUNGSI DOWNLOAD EXCEL DENGAN MERGE HEADER ---
 def to_excel_with_style(df):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        # Tulis data mulai baris 3 tanpa header otomatis
         df.to_excel(writer, sheet_name='Sales Report', header=False, startrow=2)
-        
         workbook  = writer.book
         worksheet = writer.sheets['Sales Report']
         
-        # --- FORMATTING ---
-        header_fmt = workbook.add_format({
-            'bold': True, 'align': 'center', 'valign': 'vcenter',
-            'fg_color': '#D3D3D3', 'border': 1
-        })
-        num_fmt = workbook.add_format({
-            'num_format': '#,##0;[Red]▼#,##0;0', 
-            'border': 1, 'align': 'right'
-        })
-        pct_fmt = workbook.add_format({
-            'num_format': '0.0%;[Red]▼0.0%;0%', 
-            'border': 1, 'align': 'right'
-        })
+        header_fmt = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'fg_color': '#D3D3D3', 'border': 1})
+        num_fmt = workbook.add_format({'num_format': '#,##0;[Red]▼#,##0;0', 'border': 1, 'align': 'right'})
+        pct_fmt = workbook.add_format({'num_format': '0.0%;[Red]▼0.0%;0%', 'border': 1, 'align': 'right'})
         
-        # --- LOGIKA MERGE HEADER ---
-        # 1. Merge baris Store (A1:A2)
         worksheet.merge_range('A1:A2', 'Store', header_fmt)
-        worksheet.set_column(0, 0, 10, workbook.add_format({'border': 1, 'bold': True, 'align': 'center'}))
+        worksheet.set_column(0, 0, 25, workbook.add_format({'border': 1, 'bold': True}))
 
-        # 2. Menghitung posisi kolom untuk Merge Category (TOTAL SALES, SMALL, dll)
         current_col = 1
-        # Ambil list unik kategori secara berurutan
         categories = []
         for cat in df.columns.get_level_values(0):
-            if cat not in categories:
-                categories.append(cat)
+            if cat not in categories: categories.append(cat)
         
         for cat in categories:
-            # Cari tahu berapa banyak sub-kolom (metrik) milik kategori ini
             sub_cols_count = list(df.columns.get_level_values(0)).count(cat)
-            
             if sub_cols_count > 1:
-                # Lakukan Merge (Baris 1)
                 worksheet.merge_range(0, current_col, 0, current_col + sub_cols_count - 1, cat, header_fmt)
             else:
                 worksheet.write(0, current_col, cat, header_fmt)
             
-            # Tulis Nama Metrik (Baris 2)
             metrics = df[cat].columns
             for i, met in enumerate(metrics):
                 col_idx = current_col + i
                 worksheet.write(1, col_idx, met, header_fmt)
-                
-                # Apply column styling
-                if "YEAR" in met:
-                    worksheet.set_column(col_idx, col_idx, 15, num_fmt)
-                else:
-                    worksheet.set_column(col_idx, col_idx, 12, pct_fmt)
-            
+                if "YEAR" in met: worksheet.set_column(col_idx, col_idx, 15, num_fmt)
+                else: worksheet.set_column(col_idx, col_idx, 12, pct_fmt)
             current_col += sub_cols_count
                 
     return output.getvalue()
@@ -155,7 +147,7 @@ if uploaded_file:
                 def_idx = i
                 break
         
-        all_stores = sorted(df['Str_cd'].unique(), key=int)
+        all_stores = sorted(df['Str_cd'].unique())
         selected_stores = st.multiselect("SELECT STORES", all_stores, default=all_stores)
         selected_groups = st.multiselect("SELECT MAPPING GROUP", ['SMALL', 'MEDIUM', 'BIG'], default=['SMALL', 'MEDIUM', 'BIG'])
         selected_item = st.selectbox("SELECT ITEM", all_items, index=def_idx)
@@ -192,30 +184,22 @@ if uploaded_file:
         final_rows.append(res)
 
     if final_rows:
-        res_df = pd.DataFrame(final_rows)
-        res_df['Store'] = pd.to_numeric(res_df['Store'])
-        res_df = res_df.sort_values('Store').set_index('Store')
+        res_df = pd.DataFrame(final_rows).set_index('Store')
         res_df.columns = pd.MultiIndex.from_tuples(res_df.columns)
         
         st.markdown(f"### 📋 {selected_item} Report ({period})")
+        format_dict = {col: ("{:,.0f}" if "YEAR" in col[1] else "{:.1f}%") for col in res_df.columns}
         
-        format_dict = {}
-        for col in res_df.columns:
-            if "YEAR" in col[1]: format_dict[col] = "{:,.0f}"
-            else: format_dict[col] = "{:.1f}%"
-            
         st.dataframe(
             res_df.style.format(format_dict).applymap(
                 lambda x: 'color: red' if isinstance(x, (int, float)) and x < 0 else None
             ),
-            use_container_width=True,
-            height=500
+            use_container_width=True, height=500
         )
         
         df_export = res_df.copy()
         for col in df_export.columns:
-            if "%" in col[1]:
-                df_export[col] = df_export[col] / 100
+            if "%" in col[1]: df_export[col] = df_export[col] / 100
         
         excel_bin = to_excel_with_style(df_export)
         st.download_button(
@@ -225,5 +209,3 @@ if uploaded_file:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )
-    else:
-        st.info("No data found for selected filters.")
