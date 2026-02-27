@@ -80,13 +80,11 @@ def load_and_clean_data(uploaded_file):
 def to_excel_with_style(df):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        # Tulis data mulai baris 3 tanpa header otomatis
         df.to_excel(writer, sheet_name='Sales Report', header=False, startrow=2)
         
         workbook  = writer.book
         worksheet = writer.sheets['Sales Report']
         
-        # --- FORMATTING ---
         header_fmt = workbook.add_format({
             'bold': True, 'align': 'center', 'valign': 'vcenter',
             'fg_color': '#D3D3D3', 'border': 1
@@ -100,36 +98,28 @@ def to_excel_with_style(df):
             'border': 1, 'align': 'right'
         })
         
-        # --- LOGIKA MERGE HEADER ---
-        # 1. Merge baris Store (A1:A2)
         worksheet.merge_range('A1:A2', 'Store', header_fmt)
         worksheet.set_column(0, 0, 10, workbook.add_format({'border': 1, 'bold': True, 'align': 'center'}))
 
-        # 2. Menghitung posisi kolom untuk Merge Category (TOTAL SALES, SMALL, dll)
         current_col = 1
-        # Ambil list unik kategori secara berurutan
         categories = []
         for cat in df.columns.get_level_values(0):
             if cat not in categories:
                 categories.append(cat)
         
         for cat in categories:
-            # Cari tahu berapa banyak sub-kolom (metrik) milik kategori ini
             sub_cols_count = list(df.columns.get_level_values(0)).count(cat)
             
             if sub_cols_count > 1:
-                # Lakukan Merge (Baris 1)
                 worksheet.merge_range(0, current_col, 0, current_col + sub_cols_count - 1, cat, header_fmt)
             else:
                 worksheet.write(0, current_col, cat, header_fmt)
             
-            # Tulis Nama Metrik (Baris 2)
             metrics = df[cat].columns
             for i, met in enumerate(metrics):
                 col_idx = current_col + i
                 worksheet.write(1, col_idx, met, header_fmt)
                 
-                # Apply column styling
                 if "YEAR" in met:
                     worksheet.set_column(col_idx, col_idx, 15, num_fmt)
                 else:
@@ -162,7 +152,11 @@ if uploaded_file:
         period = st.selectbox("SELECT PERIOD", ["Daily", "MTD", "YTD"])
         st.markdown("---")
 
-    suffix = 'D' if period == "Daily" else period
+    # --- PERBAIKAN LOGIKA SUFFIX ---
+    # Memastikan suffix berubah sesuai pilihan period
+    suffix_map = {"Daily": "D", "MTD": "M", "YTD": "Y"}
+    suffix = suffix_map[period]
+
     final_rows = []
     
     for store in selected_stores:
@@ -171,6 +165,8 @@ if uploaded_file:
             
         res = {'Store': store}
         df_total = df_match[df_match['Group'].isin(['SMALL','MEDIUM','BIG'])]
+        
+        # Menggunakan suffix yang sudah dinamis (D_TY, M_TY, atau Y_TY)
         t_ty = df_total[f'{suffix}_TY'].sum()
         t_ly = df_total[f'{suffix}_LY'].sum()
         
