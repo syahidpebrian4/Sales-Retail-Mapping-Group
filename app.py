@@ -92,23 +92,33 @@ def load_and_clean_data(uploaded_file):
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     return df
 
+# --- FUNGSI DOWNLOAD EXCEL DENGAN MERGE HEADER ---
 def to_excel_with_style(df):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, sheet_name='Sales Report', header=False, startrow=2)
+        
         workbook  = writer.book
         worksheet = writer.sheets['Sales Report']
         
-        header_fmt = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'fg_color': '#D3D3D3', 'border': 1})
-        num_fmt = workbook.add_format({'num_format': '#,##0;[Red]▼#,##0;0', 'border': 1, 'align': 'right'})
-        pct_fmt = workbook.add_format({'num_format': '0.0%;[Red]▼0.0%;0%', 'border': 1, 'align': 'right'})
-        bold_border = workbook.add_format({'border': 1, 'bold': True, 'align': 'center'})
-
-        # Header Khusus Store Code & Name
+        header_fmt = workbook.add_format({
+            'bold': True, 'align': 'center', 'valign': 'vcenter',
+            'fg_color': '#D3D3D3', 'border': 1
+        })
+        num_fmt = workbook.add_format({
+            'num_format': '#,##0;[Red]▼#,##0;0', 
+            'border': 1, 'align': 'right'
+        })
+        pct_fmt = workbook.add_format({
+            'num_format': '0.0%;[Red]▼0.0%;0%', 
+            'border': 1, 'align': 'right'
+        })
+        
+        # Merge Header untuk Store Code dan Store Name
         worksheet.merge_range('A1:A2', 'Store Code', header_fmt)
         worksheet.merge_range('B1:B2', 'Store Name', header_fmt)
-        worksheet.set_column(0, 0, 12, bold_border)
-        worksheet.set_column(1, 1, 20, bold_border)
+        worksheet.set_column(0, 0, 10, workbook.add_format({'border': 1, 'bold': True, 'align': 'center'}))
+        worksheet.set_column(1, 1, 20, workbook.add_format({'border': 1, 'bold': True, 'align': 'center'}))
 
         current_col = 2
         categories = []
@@ -118,6 +128,7 @@ def to_excel_with_style(df):
         
         for cat in categories:
             sub_cols_count = list(df.columns.get_level_values(0)).count(cat)
+            
             if sub_cols_count > 1:
                 worksheet.merge_range(0, current_col, 0, current_col + sub_cols_count - 1, cat, header_fmt)
             else:
@@ -127,10 +138,12 @@ def to_excel_with_style(df):
             for i, met in enumerate(metrics):
                 col_idx = current_col + i
                 worksheet.write(1, col_idx, met, header_fmt)
+                
                 if "YEAR" in met:
                     worksheet.set_column(col_idx, col_idx, 15, num_fmt)
                 else:
                     worksheet.set_column(col_idx, col_idx, 12, pct_fmt)
+            
             current_col += sub_cols_count
                 
     return output.getvalue()
@@ -158,10 +171,9 @@ if uploaded_file:
         period = st.selectbox("SELECT PERIOD", ["Daily", "MTD", "YTD"])
         st.markdown("---")
 
-    # Fix KeyError Logic
     suffix_map = {"Daily": "D", "MTD": "M", "YTD": "Y"}
-    suffix = suffix_map.get(period, "D")
-    
+    suffix = suffix_map[period]
+
     final_rows = []
     
     for store in selected_stores:
@@ -200,7 +212,7 @@ if uploaded_file:
         res_df['Store Code'] = pd.to_numeric(res_df['Store Code'])
         res_df = res_df.sort_values('Store Code').set_index('Store Code')
         
-        # Buat MultiIndex agar Store Name sejajar dengan header lainnya
+        # Menyesuaikan kolom agar Store Name muncul dengan benar di MultiIndex
         res_df.columns = pd.MultiIndex.from_tuples([
             (c if isinstance(c, tuple) else c, "" if not isinstance(c, tuple) else c[1]) 
             for c in res_df.columns
