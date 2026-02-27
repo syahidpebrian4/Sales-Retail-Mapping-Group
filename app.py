@@ -97,30 +97,32 @@ def to_excel_with_style(df):
         num_fmt = workbook.add_format({'num_format': '#,##0;[Red]▼#,##0;0', 'border': 1, 'align': 'right'})
         pct_fmt = workbook.add_format({'num_format': '0.0%;[Red]▼0.0%;0%', 'border': 1, 'align': 'right'})
 
-        # Header Store Code & Store Name
+        # Merge Header untuk Store Code dan Store Name
         worksheet.merge_range('A1:A2', 'Store Code', header_fmt)
         worksheet.merge_range('B1:B2', 'Store Name', header_fmt)
-        worksheet.set_column(0, 0, 12) # Kolom Code
-        worksheet.set_column(1, 1, 20) # Kolom Name
-        
+        worksheet.set_column(0, 0, 12)
+        worksheet.set_column(1, 1, 20)
+
         current_col = 2
         categories = []
+        # Ambil list kategori unik selain Store Name (kolom ke-2 di index 0)
         for cat in df.columns.get_level_values(0):
-            if cat not in ["Store Name"] and cat not in categories:
+            if cat != "Store Name" and cat not in categories:
                 categories.append(cat)
         
         for cat in categories:
-            sub_cols_count = list(df.columns.get_level_values(0)).count(cat)
-            if sub_cols_count > 1:
-                worksheet.merge_range(0, current_col, 0, current_col + sub_cols_count - 1, cat, header_fmt)
-            else:
-                worksheet.write(0, current_col, cat, header_fmt)
+            sub_cols = df[cat].columns
+            sub_cols_count = len(sub_cols)
             
-            metrics = df[cat].columns
-            for i, met in enumerate(metrics):
+            if sub_cols_count > 1:
+                worksheet.merge_range(0, current_col, 0, current_col + sub_cols_count - 1, str(cat), header_fmt)
+            else:
+                worksheet.write(0, current_col, str(cat), header_fmt)
+            
+            for i, met in enumerate(sub_cols):
                 col_idx = current_col + i
-                worksheet.write(1, col_idx, met, header_fmt)
-                if "YEAR" in met: worksheet.set_column(col_idx, col_idx, 15, num_fmt)
+                worksheet.write(1, col_idx, str(met), header_fmt)
+                if "YEAR" in str(met).upper(): worksheet.set_column(col_idx, col_idx, 15, num_fmt)
                 else: worksheet.set_column(col_idx, col_idx, 12, pct_fmt)
             current_col += sub_cols_count
     return output.getvalue()
@@ -151,10 +153,12 @@ if uploaded_file:
         df_match = df[(df['Str_cd'] == store) & (df['Item'] == selected_item)]
         if df_match.empty: continue
             
+        # Data dasar Store
         res = {
-            'Store Code': store,
             'Store Name': STORE_MAP.get(store, "Unknown")
         }
+        # Tambahkan index sebagai Store Code nanti
+        store_code_val = store
         
         df_total = df_match[df_match['Group'].isin(['SMALL','MEDIUM','BIG'])]
         col_ty = f'{suffix}_TY'
@@ -178,20 +182,33 @@ if uploaded_file:
                 res[(g, 'GROWTH (%)')] = ((g_ty - g_ly)/g_ly*100) if g_ly != 0 else 0
                 res[(g, 'CONT (%)')] = (g_ty / t_ty * 100) if t_ty != 0 else 0
         
+        # Simpan sementara dengan store_code_val sebagai key bantuan
+        res['_str_code'] = store_code_val
         final_rows.append(res)
 
     if final_rows:
         res_df = pd.DataFrame(final_rows)
-        res_df['Store Code'] = pd.to_numeric(res_df['Store Code'])
-        res_df = res_df.sort_values('Store Code').set_index('Store Code')
+        res_df['_str_code'] = pd.to_numeric(res_df['_str_code'])
+        res_df = res_df.sort_values('_str_code').set_index('_str_code')
+        res_df.index.name = 'Store Code'
         
-        res_df.columns = pd.MultiIndex.from_tuples([
-            (c if isinstance(c, tuple) else c, "" if not isinstance(c, tuple) else c[1]) 
-            for c in res_df.columns
-        ])
+        # --- FIX: MERGE HEADER DI STREAMLIT ---
+        new_columns = []
+        for col in res_df.columns:
+            if col == 'Store Name':
+                new_columns.append(('Store Name', ''))
+            elif isinstance(col, tuple):
+                new_columns.append(col)
+        res_df.columns = pd.MultiIndex.from_tuples(new_columns)
         
         st.markdown(f"### 📋 {selected_item} Report ({period})")
-        format_dict = {col: ("{:,.0f}" if "YEAR" in col[1] else "{:.1f}%") for col in res_df.columns if col[1] != ""}
+        
+        # Format angka & persentase
+        format_dict = {}
+        for col in res_df.columns:
+            if col[1] == "": continue
+            if "YEAR" in col[1].upper(): format_dict[col] = "{:,.0f}"
+            else: format_dict[col] = "{:.1f}%"
         
         st.dataframe(
             res_df.style.format(format_dict).applymap(
@@ -199,9 +216,11 @@ if uploaded_file:
             ), use_container_width=True, height=500
         )
         
+        # Download Button
         df_export = res_df.copy()
         for col in df_export.columns:
-            if "%" in col[1]: df_export[col] = df_export[col] / 100
+            if col[1] != "" and "%" in col[1]:
+                df_export[col] = df_export[col] / 100
         
         excel_bin = to_excel_with_style(df_export)
         st.download_button(
