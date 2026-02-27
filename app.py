@@ -92,27 +92,30 @@ def load_and_clean_data(uploaded_file):
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     return df
 
+# --- FUNGSI DOWNLOAD EXCEL DENGAN MERGE HEADER ---
 def to_excel_with_style(df):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, sheet_name='Sales Report', header=False, startrow=2)
+        
         workbook  = writer.book
         worksheet = writer.sheets['Sales Report']
         
         header_fmt = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'fg_color': '#D3D3D3', 'border': 1})
         num_fmt = workbook.add_format({'num_format': '#,##0;[Red]▼#,##0;0', 'border': 1, 'align': 'right'})
         pct_fmt = workbook.add_format({'num_format': '0.0%;[Red]▼0.0%;0%', 'border': 1, 'align': 'right'})
-        bold_border_fmt = workbook.add_format({'border': 1, 'bold': True, 'align': 'center'})
+        bold_center = workbook.add_format({'border': 1, 'bold': True, 'align': 'center'})
 
+        # Merge Header untuk Store Code dan Store Name
         worksheet.merge_range('A1:A2', 'Store Code', header_fmt)
         worksheet.merge_range('B1:B2', 'Store Name', header_fmt)
-        worksheet.set_column(0, 0, 12, bold_border_fmt)
-        worksheet.set_column(1, 1, 20, bold_border_fmt)
+        worksheet.set_column(0, 0, 12, bold_center)
+        worksheet.set_column(1, 1, 18, bold_center)
 
         current_col = 2
         categories = []
         for cat in df.columns.get_level_values(0):
-            if cat not in ["Store Name", "Store Code"] and cat not in categories:
+            if cat not in ["Store Name"] and cat not in categories:
                 categories.append(cat)
         
         for cat in categories:
@@ -157,13 +160,11 @@ if uploaded_file:
         period = st.selectbox("SELECT PERIOD", ["Daily", "MTD", "YTD"])
         st.markdown("---")
 
-    # --- PERBAIKAN KEYERROR ---
-    # Memastikan suffix benar-benar sesuai dengan kolom dataframe
-    period_to_suffix = {"Daily": "D", "MTD": "M", "YTD": "Y"}
-    suffix = period_to_suffix.get(period, "D")
+    # --- PERBAIKAN LOGIKA SUFFIX (MENCEGAH KEYERROR) ---
+    suffix_lookup = {"Daily": "D", "MTD": "M", "YTD": "Y"}
+    suffix = suffix_lookup.get(period, "D")
     
     final_rows = []
-    
     for store in selected_stores:
         df_match = df[(df['Str_cd'] == store) & (df['Item'] == selected_item)]
         if df_match.empty: continue
@@ -182,11 +183,11 @@ if uploaded_file:
         res[('TOTAL SALES', 'GROWTH (%)')] = ((t_ty - t_ly)/t_ly*100) if t_ly != 0 else 0
         
         for g in ['SMALL', 'MEDIUM', 'BIG']:
-            df_g = df_match[df_match['Group'] == g]
-            g_ty = df_g[f'{suffix}_TY'].sum()
-            g_ly = df_g[f'{suffix}_LY'].sum()
-            
             if g in selected_groups:
+                df_g = df_match[df_match['Group'] == g]
+                g_ty = df_g[f'{suffix}_TY'].sum()
+                g_ly = df_g[f'{suffix}_LY'].sum()
+                
                 res[(g, 'THIS YEAR')] = g_ty
                 res[(g, 'LAST YEAR')] = g_ly
                 res[(g, 'GROWTH (%)')] = ((g_ty - g_ly)/g_ly*100) if g_ly != 0 else 0
@@ -199,6 +200,7 @@ if uploaded_file:
         res_df['Store Code'] = pd.to_numeric(res_df['Store Code'])
         res_df = res_df.sort_values('Store Code').set_index('Store Code')
         
+        # Format MultiIndex untuk kolom tunggal (Store Name)
         res_df.columns = pd.MultiIndex.from_tuples([
             (c if isinstance(c, tuple) else c, "" if not isinstance(c, tuple) else c[1]) 
             for c in res_df.columns
