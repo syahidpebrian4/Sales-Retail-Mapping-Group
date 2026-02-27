@@ -50,6 +50,22 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
+# ================= MAPPING NAMA STORE =================
+STORE_MAP = {
+    "6001": "Pasar Rebo", "6003": "Kelapa Gading", "6006": "Ciputat",
+    "6007": "Alam Sutera", "6010": "Medan", "6014": "Palembang",
+    "6015": "Pekanbaru", "6021": "Jatake", "6022": "Serang",
+    "6029": "Batam", "6031": "Lampung", "6039": "Serpong",
+    "6004": "Meruya", "6005": "Bandung", "6008": "Cibitung",
+    "6018": "Bekasi", "6023": "Cikarang", "6024": "Cirebon",
+    "6026": "Bogor", "6027": "Tasikmalaya", "6030": "Pakansari",
+    "6034": "Kerawang", "6036": "Cimahi", "6038": "Tegal",
+    "6002": "Sidoarjo", "6009": "Denpasar", "6011": "Semarang",
+    "6013": "Makasar", "6016": "Yogyakarta", "6017": "Banjarmasin",
+    "6019": "Solo", "6020": "Balikpapan", "6028": "Mastrip",
+    "6032": "Samarinda", "6033": "Manado", "6037": "Mataram"
+}
+
 # ================= LOGIKA DATA =================
 
 def load_and_clean_data(uploaded_file):
@@ -76,40 +92,32 @@ def load_and_clean_data(uploaded_file):
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     return df
 
-# --- FUNGSI DOWNLOAD EXCEL DENGAN MERGE HEADER ---
 def to_excel_with_style(df):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, sheet_name='Sales Report', header=False, startrow=2)
-        
         workbook  = writer.book
         worksheet = writer.sheets['Sales Report']
         
-        header_fmt = workbook.add_format({
-            'bold': True, 'align': 'center', 'valign': 'vcenter',
-            'fg_color': '#D3D3D3', 'border': 1
-        })
-        num_fmt = workbook.add_format({
-            'num_format': '#,##0;[Red]▼#,##0;0', 
-            'border': 1, 'align': 'right'
-        })
-        pct_fmt = workbook.add_format({
-            'num_format': '0.0%;[Red]▼0.0%;0%', 
-            'border': 1, 'align': 'right'
-        })
-        
-        worksheet.merge_range('A1:A2', 'Store', header_fmt)
-        worksheet.set_column(0, 0, 10, workbook.add_format({'border': 1, 'bold': True, 'align': 'center'}))
+        header_fmt = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'fg_color': '#D3D3D3', 'border': 1})
+        num_fmt = workbook.add_format({'num_format': '#,##0;[Red]▼#,##0;0', 'border': 1, 'align': 'right'})
+        pct_fmt = workbook.add_format({'num_format': '0.0%;[Red]▼0.0%;0%', 'border': 1, 'align': 'right'})
+        bold_border = workbook.add_format({'border': 1, 'bold': True, 'align': 'center'})
 
-        current_col = 1
+        # Header Khusus Store Code & Name
+        worksheet.merge_range('A1:A2', 'Store Code', header_fmt)
+        worksheet.merge_range('B1:B2', 'Store Name', header_fmt)
+        worksheet.set_column(0, 0, 12, bold_border)
+        worksheet.set_column(1, 1, 20, bold_border)
+
+        current_col = 2
         categories = []
         for cat in df.columns.get_level_values(0):
-            if cat not in categories:
+            if cat not in ["Store Name"] and cat not in categories:
                 categories.append(cat)
         
         for cat in categories:
             sub_cols_count = list(df.columns.get_level_values(0)).count(cat)
-            
             if sub_cols_count > 1:
                 worksheet.merge_range(0, current_col, 0, current_col + sub_cols_count - 1, cat, header_fmt)
             else:
@@ -119,12 +127,10 @@ def to_excel_with_style(df):
             for i, met in enumerate(metrics):
                 col_idx = current_col + i
                 worksheet.write(1, col_idx, met, header_fmt)
-                
                 if "YEAR" in met:
                     worksheet.set_column(col_idx, col_idx, 15, num_fmt)
                 else:
                     worksheet.set_column(col_idx, col_idx, 12, pct_fmt)
-            
             current_col += sub_cols_count
                 
     return output.getvalue()
@@ -152,21 +158,23 @@ if uploaded_file:
         period = st.selectbox("SELECT PERIOD", ["Daily", "MTD", "YTD"])
         st.markdown("---")
 
-    # --- PERBAIKAN LOGIKA SUFFIX ---
-    # Memastikan suffix berubah sesuai pilihan period
+    # Fix KeyError Logic
     suffix_map = {"Daily": "D", "MTD": "M", "YTD": "Y"}
-    suffix = suffix_map[period]
-
+    suffix = suffix_map.get(period, "D")
+    
     final_rows = []
     
     for store in selected_stores:
         df_match = df[(df['Str_cd'] == store) & (df['Item'] == selected_item)]
         if df_match.empty: continue
             
-        res = {'Store': store}
-        df_total = df_match[df_match['Group'].isin(['SMALL','MEDIUM','BIG'])]
+        # Pisahkan Store Code dan Store Name
+        res = {
+            'Store Code': store,
+            'Store Name': STORE_MAP.get(store, "Unknown Store")
+        }
         
-        # Menggunakan suffix yang sudah dinamis (D_TY, M_TY, atau Y_TY)
+        df_total = df_match[df_match['Group'].isin(['SMALL','MEDIUM','BIG'])]
         t_ty = df_total[f'{suffix}_TY'].sum()
         t_ly = df_total[f'{suffix}_LY'].sum()
         
@@ -189,16 +197,21 @@ if uploaded_file:
 
     if final_rows:
         res_df = pd.DataFrame(final_rows)
-        res_df['Store'] = pd.to_numeric(res_df['Store'])
-        res_df = res_df.sort_values('Store').set_index('Store')
-        res_df.columns = pd.MultiIndex.from_tuples(res_df.columns)
+        res_df['Store Code'] = pd.to_numeric(res_df['Store Code'])
+        res_df = res_df.sort_values('Store Code').set_index('Store Code')
+        
+        # Buat MultiIndex agar Store Name sejajar dengan header lainnya
+        res_df.columns = pd.MultiIndex.from_tuples([
+            (c if isinstance(c, tuple) else c, "" if not isinstance(c, tuple) else c[1]) 
+            for c in res_df.columns
+        ])
         
         st.markdown(f"### 📋 {selected_item} Report ({period})")
         
         format_dict = {}
         for col in res_df.columns:
             if "YEAR" in col[1]: format_dict[col] = "{:,.0f}"
-            else: format_dict[col] = "{:.1f}%"
+            elif col[1] != "": format_dict[col] = "{:.1f}%"
             
         st.dataframe(
             res_df.style.format(format_dict).applymap(
