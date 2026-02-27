@@ -117,11 +117,12 @@ def to_excel_with_style(df):
         # Merge Header untuk Store Code dan Store Name
         worksheet.merge_range('A1:A2', 'Store Code', header_fmt)
         worksheet.merge_range('B1:B2', 'Store Name', header_fmt)
-        worksheet.set_column(0, 0, 10, workbook.add_format({'border': 1, 'bold': True, 'align': 'center'}))
+        worksheet.set_column(0, 0, 12, workbook.add_format({'border': 1, 'bold': True, 'align': 'center'}))
         worksheet.set_column(1, 1, 20, workbook.add_format({'border': 1, 'bold': True, 'align': 'center'}))
 
         current_col = 2
         categories = []
+        # Ambil kategori unik selain Store Name
         for cat in df.columns.get_level_values(0):
             if cat not in ["Store Name"] and cat not in categories:
                 categories.append(cat)
@@ -212,7 +213,7 @@ if uploaded_file:
         res_df['Store Code'] = pd.to_numeric(res_df['Store Code'])
         res_df = res_df.sort_values('Store Code').set_index('Store Code')
         
-        # Menyesuaikan kolom agar Store Name muncul dengan benar di MultiIndex
+        # Mapping kolom agar Store Name muncul di baris yang sama dengan header utama
         res_df.columns = pd.MultiIndex.from_tuples([
             (c if isinstance(c, tuple) else c, "" if not isinstance(c, tuple) else c[1]) 
             for c in res_df.columns
